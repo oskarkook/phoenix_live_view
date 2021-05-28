@@ -303,6 +303,7 @@ defmodule Phoenix.LiveView.LiveViewTest do
     end
 
     test "renders a live view with custom session and a router", %{conn: conn} do
+      conn = %Plug.Conn{conn | request_path: "/router/thermo_defaults/123"}
       {:ok, view, _} =
         live_isolated(conn, Phoenix.LiveViewTest.DashboardLive,
           session: %{"hello" => "world"},

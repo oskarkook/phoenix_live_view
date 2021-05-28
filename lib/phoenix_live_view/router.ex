@@ -1,3 +1,14 @@
+defmodule Phoenix.LiveView.Route do
+  defstruct path: nil,
+            view: nil,
+            action: nil,
+            live_session_name: nil,
+            live_session_extra: nil,
+            live_session_vsn: nil,
+            params: %{},
+            uri: nil
+end
+
 defmodule Phoenix.LiveView.Router do
   @moduledoc """
   Provides LiveView routing for Phoenix routers.
@@ -103,13 +114,47 @@ defmodule Phoenix.LiveView.Router do
 
   """
   defmacro live(path, live_view, action \\ nil, opts \\ []) do
+    vsn = session_vsn()
+
     quote bind_quoted: binding() do
+      live_session = Module.get_attribute(__MODULE__, :phoenix_live_session, {:default, %{}, vsn})
+
       {action, router_options} =
-        Phoenix.LiveView.Router.__live__(__MODULE__, live_view, action, opts)
+        Phoenix.LiveView.Router.__live__(__MODULE__, live_view, action, live_session, opts)
 
       Phoenix.Router.get(path, Phoenix.LiveView.Plug, action, router_options)
     end
   end
+
+  @doc """
+  TODO
+  """
+  defmacro live_session(name, do: block) do
+    quote do
+      live_session(unquote(name), %{}, do: unquote(block))
+    end
+  end
+
+  defmacro live_session(name, extra, do: block) do
+    quote do
+      name = unquote(name)
+      extra = unquote(extra)
+      vsn = unquote(session_vsn())
+
+      if existing = Module.get_attribute(__MODULE__, :phoenix_live_session) do
+        raise """
+        attempting to define live_session #{inspect(name)} inside #{inspect(existing)}.
+        live_session definitions cannot be nested.
+        """
+      end
+
+      @phoenix_live_session {name, extra, vsn}
+      unquote(block)
+      Module.delete_attribute(__MODULE__, :phoenix_live_session)
+    end
+  end
+
+  defp session_vsn, do: System.system_time()
 
   @doc """
   Fetches the LiveView and merges with the controller flash.
@@ -142,11 +187,13 @@ defmodule Phoenix.LiveView.Router do
   end
 
   @doc false
-  def __live__(router, live_view, action, opts) when is_list(action) and is_list(opts) do
-    __live__(router, live_view, nil, Keyword.merge(action, opts))
+  def __live__(router, live_view, action, live_session, opts)
+      when is_list(action) and is_list(opts) do
+    __live__(router, live_view, nil, live_session, Keyword.merge(action, opts))
   end
 
-  def __live__(router, live_view, action, opts) when is_atom(action) and is_list(opts) do
+  def __live__(router, live_view, action, live_session, opts)
+      when is_atom(action) and is_list(opts) do
     live_view = Phoenix.Router.scoped_alias(router, live_view)
 
     {private, opts} = Keyword.pop(opts, :private, %{})
@@ -163,7 +210,7 @@ defmodule Phoenix.LiveView.Router do
      alias: false,
      as: as_helper,
      private: Map.put(private, :phoenix_live_view, {live_view, opts}),
-     metadata: Map.put(metadata, :phoenix_live_view, {live_view, action})}
+     metadata: Map.put(metadata, :phoenix_live_view, {live_view, action, live_session})}
   end
 
   defp inferred_as(live_view, as, nil), do: {as || :live, live_view}

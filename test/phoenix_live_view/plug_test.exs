@@ -7,7 +7,7 @@ defmodule Phoenix.LiveView.PlugTest do
   alias Phoenix.LiveViewTest.{ThermostatLive, DashboardLive, Endpoint}
 
   defp call(conn, view, opts \\ []) do
-    opts = Keyword.merge([router: __MODULE__, layout: false], opts)
+    opts = Keyword.merge([router: Phoenix.LiveViewTest.Router, layout: false], opts)
 
     conn
     |> Plug.Test.init_test_session(%{})
@@ -50,15 +50,6 @@ defmodule Phoenix.LiveView.PlugTest do
   test "with user session", %{conn: conn} do
     conn = call(conn, DashboardLive)
     assert conn.resp_body =~ ~s(session: %{"user_id" => "alex"})
-  end
-
-  test "with existing #{LiveViewPlug.link_header()} header", %{conn: conn} do
-    conn =
-      conn
-      |> put_req_header(LiveViewPlug.link_header(), "some.site.com")
-      |> call(DashboardLive)
-
-    assert conn.resp_body =~ ~s(session: %{})
   end
 
   test "with a module container", %{conn: conn} do
