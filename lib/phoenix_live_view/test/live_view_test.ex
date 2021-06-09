@@ -1332,9 +1332,6 @@ defmodule Phoenix.LiveViewTest do
     end
   end
 
-  # TODO TODO TODO
-  # ATTACK VECTOR – WE ALLOW INFINITE root LV mounts!!!!
-
   @doc false
   def __live_redirect__(%View{} = view, opts) do
     to = Keyword.fetch!(opts, :to)
