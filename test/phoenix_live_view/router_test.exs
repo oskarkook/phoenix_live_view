@@ -3,6 +3,7 @@ defmodule Phoenix.LiveView.RouterTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Phoenix.LiveView.Utils
   alias Phoenix.LiveViewTest.{Endpoint, DashboardLive}
   alias Phoenix.LiveViewTest.Router.Helpers, as: Routes
 
@@ -61,5 +62,59 @@ defmodule Phoenix.LiveView.RouterTest do
     assert Phoenix.LiveViewTest.Router
            |> Phoenix.Router.route_info("GET", "/thermo-with-metadata", nil)
            |> Map.get(:route_name) == "opts"
+  end
+
+  describe "live_session" do
+    test "with defaults" do
+      assert {:internal, route} = Utils.live_link_info(@endpoint, Phoenix.LiveViewTest.Router, "/thermo-live-session")
+      assert route.live_session_name == :default
+      assert route.live_session_extra == %{}
+      assert route.live_session_vsn
+    end
+
+    test "with extra session metadata" do
+      assert {:internal, route} = Utils.live_link_info(@endpoint, Phoenix.LiveViewTest.Router, "/thermo-live-session-admin")
+      assert route.live_session_name == :admin
+      assert route.live_session_extra == %{"admin" => true}
+      assert route.live_session_vsn
+    end
+
+    test "raises when nesting" do
+      assert_raise(RuntimeError, ~r"attempting to define live_session :invalid inside :ok", fn ->
+        Code.eval_quoted(
+          quote do
+            defmodule NestedRouter do
+              import Phoenix.LiveView.Router
+
+              live_session :ok do
+                live_session :invalid do
+                end
+              end
+            end
+          end
+        )
+      end)
+    end
+
+    test "raises when redefining" do
+      assert_raise(RuntimeError, ~r"attempting to redefine live_session :one", fn ->
+        Code.eval_quoted(
+          quote do
+            defmodule DupRouter do
+              import Phoenix.LiveView.Router
+
+              live_session :one do
+              end
+
+              live_session :two do
+              end
+
+              live_session :one do
+              end
+            end
+          end
+        )
+      end)
+    end
   end
 end

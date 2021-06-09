@@ -878,6 +878,7 @@ export class LiveSocket {
       receive(kind, cb){ this.receives.push([kind, cb])}
     }
     setTimeout(() => {
+      if(view.isDestroyed()){ return }
       fakePush.receives.reduce((acc, [kind, cb]) => acc.receive(kind, cb), push())
     }, latency)
     return fakePush
@@ -922,7 +923,6 @@ export class LiveSocket {
     DOM.all(document, `${PHX_VIEW_SELECTOR}:not([${PHX_PARENT_ID}])`, rootEl => {
       if(!this.getRootById(rootEl.id)){
         let view = this.joinRootView(rootEl, this.getHref())
-        this.root = this.root || view
         if(rootEl.getAttribute(PHX_MAIN)){ this.main = view }
       }
       rootsFound = true
@@ -938,6 +938,7 @@ export class LiveSocket {
   replaceMain(href, flash, callback = null, linkRef = this.setPendingLink(href)){
     let oldMainEl = this.main.el
     let newMainEl = DOM.cloneNode(oldMainEl)
+    newMainEl.id = `${oldMainEl.id.split(":")[0]}:${this.nextRef()}`
     this.main.showLoader(this.loaderTimeout)
     this.main.destroy()
     oldMainEl.replaceWith(newMainEl)
@@ -2014,7 +2015,7 @@ export class View {
     this.formSubmits = []
     this.children = this.parent ? null : {}
     this.root.children[this.id] = {}
-    this.channel = this.liveSocket.channel(`lv:${this.id}:${liveSocket.nextRef()}`, () => {
+    this.channel = this.liveSocket.channel(`lv:${this.id}`, () => {
       return {
         url: this.href,
         params: this.connectParams(),
@@ -2472,9 +2473,9 @@ export class View {
     this.joinCallback = () => callback && callback(this, this.joinCount)
     this.liveSocket.wrapPush(this, {timeout: false}, () => {
       return this.channel.join()
-        .receive("ok", data => this.onJoin(data))
-        .receive("error", resp => this.onJoinError(resp))
-        .receive("timeout", () => this.onJoinError({reason: "timeout"}))
+        .receive("ok", data => !this.isDestroyed() && this.onJoin(data))
+        .receive("error", resp => !this.isDestroyed() && this.onJoinError(resp))
+        .receive("timeout", () => !this.isDestroyed() && this.onJoinError({reason: "timeout"}))
     })
   }
 

@@ -306,8 +306,7 @@ defmodule Phoenix.LiveView.LiveViewTest do
       conn = %Plug.Conn{conn | request_path: "/router/thermo_defaults/123"}
       {:ok, view, _} =
         live_isolated(conn, Phoenix.LiveViewTest.DashboardLive,
-          session: %{"hello" => "world"},
-          router: Phoenix.LiveViewTest.Router
+          session: %{"hello" => "world"}
         )
 
       assert render(view) =~ "session: %{&quot;hello&quot; =&gt; &quot;world&quot;}"

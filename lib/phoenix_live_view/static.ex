@@ -2,6 +2,7 @@ defmodule Phoenix.LiveView.Session do
   alias Phoenix.LiveView.{Session, Route, Session, Utils}
 
   defstruct id: nil,
+            client_suffix: nil,
             view: nil,
             root_view: nil,
             parent_pid: nil,
@@ -13,10 +14,19 @@ defmodule Phoenix.LiveView.Session do
             live_session_vsn: nil,
             assign_new: []
 
+  def main?(%Session{} = session), do: !is_nil(session.router) and !session.parent_pid
+
+  def live_redirect?(%Session{} = session) do
+    main?(session) && !is_nil(session.client_suffix)
+  end
+
   def authorize_root_redirect(%Session{} = session, %Route{} = route) do
     %Session{root_view: root_view, view: view, live_session_vsn: vsn} = session
 
     cond do
+      session.client_suffix == nil or (session.client_suffix && session.router == nil) ->
+        {:error, :unauthorized}
+
       route.view == root_view and route.view == view and route.live_session_vsn == vsn ->
         {:ok, session}
 
@@ -76,13 +86,14 @@ defmodule Phoenix.LiveView.Static do
   """
   def verify_session(endpoint, topic, session_token, static_token) do
     with {:ok, %{id: id} = raw_session} <- verify_token(endpoint, session_token),
-         :ok <- verify_topic(topic, id),
+         {:ok, new_id, client_suffix} <- verify_topic(topic, id),
          {:ok, static} <- verify_static_token(endpoint, id, static_token) do
       merged_session = Map.merge(raw_session, static)
       {live_session_name, vsn} = merged_session[:live_session] || {nil, nil}
 
       session = %Session{
-        id: merged_session.id,
+        id: new_id,
+        client_suffix: client_suffix,
         view: merged_session.view,
         root_view: merged_session.root_view,
         parent_pid: merged_session.parent_pid,
@@ -100,12 +111,18 @@ defmodule Phoenix.LiveView.Static do
     end
   end
 
-  defp verify_topic("lv:" <> topic, id) when byte_size(topic) <= @max_topic_bytes do
-    id_size = byte_size(id)
+  defp verify_topic("lv:" <> topic_id, session_id) when byte_size(topic_id) <= @max_topic_bytes do
+    id_size = byte_size(session_id)
 
-    case topic do
-      <<^id::binary-size(id_size), ":", _client_suffix::binary>> -> :ok
-      _ -> {:error, :invalid}
+    case topic_id do
+      ^session_id ->
+        {:ok, session_id, nil}
+
+      <<^session_id::binary-size(id_size), ":", client_suffix::binary>> ->
+        {:ok, topic_id, client_suffix}
+
+      _ ->
+        {:error, :invalid}
     end
   end
 

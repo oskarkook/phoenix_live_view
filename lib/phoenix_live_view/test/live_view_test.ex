@@ -1322,6 +1322,27 @@ defmodule Phoenix.LiveViewTest do
   end
 
   @doc """
+  TODO
+  """
+  defmacro live_redirect(view, opts) do
+    quote bind_quoted: binding() do
+      {to, session_token, static_token} = Phoenix.LiveViewTest.__live_redirect__(view, opts)
+      raise inspect({to, session_token, static_token})
+      # live(conn, to)
+    end
+  end
+
+  # TODO TODO TODO
+  # ATTACK VECTOR – WE ALLOW INFINITE root LV mounts!!!!
+
+  @doc false
+  def __live_redirect__(%View{} = view, opts) do
+    to = Keyword.fetch!(opts, :to)
+    {session_token, static_token} = ClientProxy.root_tokens(proxy_pid(view))
+    {to, session_token, static_token}
+  end
+
+  @doc """
   Receives a `form_element` and asserts that `phx-trigger-action` has been
   set to true, following up on that request.
 

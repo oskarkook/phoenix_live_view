@@ -117,7 +117,8 @@ defmodule Phoenix.LiveView.Router do
     vsn = session_vsn()
 
     quote bind_quoted: binding() do
-      live_session = Module.get_attribute(__MODULE__, :phoenix_live_session, {:default, %{}, vsn})
+      live_session =
+        Module.get_attribute(__MODULE__, :phoenix_live_session_current, {:default, %{}, vsn})
 
       {action, router_options} =
         Phoenix.LiveView.Router.__live__(__MODULE__, live_view, action, live_session, opts)
@@ -137,20 +138,30 @@ defmodule Phoenix.LiveView.Router do
 
   defmacro live_session(name, extra, do: block) do
     quote do
+      Module.register_attribute(__MODULE__, :phoenix_live_sessions, accumulate: true)
       name = unquote(name)
       extra = unquote(extra)
       vsn = unquote(session_vsn())
 
-      if existing = Module.get_attribute(__MODULE__, :phoenix_live_session) do
+      if nested = Module.get_attribute(__MODULE__, :phoenix_live_session_current) do
         raise """
-        attempting to define live_session #{inspect(name)} inside #{inspect(existing)}.
+        attempting to define live_session #{inspect(name)} inside #{inspect(elem(nested, 0))}.
         live_session definitions cannot be nested.
         """
       end
 
-      @phoenix_live_session {name, extra, vsn}
+      existing = Enum.find(@phoenix_live_sessions, fn {existing_name, _, _} -> name == existing_name end)
+      if existing do
+        raise """
+        attempting to redefine live_session #{inspect(name)}.
+        live_session routes must be declared in a single named block.
+        """
+      end
+
+      @phoenix_live_session_current {name, extra, vsn}
+      @phoenix_live_sessions {name, extra, vsn}
       unquote(block)
-      Module.delete_attribute(__MODULE__, :phoenix_live_session)
+      Module.delete_attribute(__MODULE__, :phoenix_live_session_current)
     end
   end
 

@@ -30,6 +30,13 @@ defmodule Phoenix.LiveViewTest.ClientProxy do
   def encode!(msg), do: msg
 
   @doc """
+  Returns the tokens of the root view.
+  """
+  def root_tokens(proxy_pid) do
+    GenServer.call(proxy_pid, :root_tokens)
+  end
+
+  @doc """
   Reports upload progress to the proxy.
   """
   def report_upload_progress(proxy_pid, from, element, entry_ref, percent, cid) do
@@ -82,7 +89,7 @@ defmodule Phoenix.LiveViewTest.ClientProxy do
       module: module,
       endpoint: endpoint,
       child_statics: Map.delete(DOM.find_static_views(root_html), id),
-      topic: "lv:#{id}:#{System.unique_integer([:positive])}"
+      topic: "lv:#{id}"
     }
 
     # We build an absolute path to any relative
@@ -412,6 +419,10 @@ defmodule Phoenix.LiveViewTest.ClientProxy do
     {:reply, {:ok, {state.html, state.static_path}}, state}
   end
 
+  def handle_call(:root_tokens, _from, state) do
+    {:reply, {state.root_view.session_token, state.root_view.static_token}, state}
+  end
+
   def handle_call({:live_children, topic}, from, state) do
     view = fetch_view_by_topic!(state, topic)
     :ok = Phoenix.LiveView.Channel.ping(view.pid)
@@ -732,7 +743,7 @@ defmodule Phoenix.LiveViewTest.ClientProxy do
         ref: ref,
         proxy: proxy,
         endpoint: endpoint,
-        topic: "lv:#{Keyword.fetch!(attrs, :id)}:#{System.unique_integer([:positive])}"
+        topic: "lv:#{Keyword.fetch!(attrs, :id)}"
       )
 
     struct!(__MODULE__, attrs_with_defaults)

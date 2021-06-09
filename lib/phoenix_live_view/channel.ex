@@ -794,7 +794,7 @@ defmodule Phoenix.LiveView.Channel do
             {:stop, :shutdown, :no_state}
 
           %{} ->
-            case authorize_root_redirect(verified, endpoint, params) do
+            case authorize_session(verified, endpoint, params["url"]) do
               {:ok, %Session{} = new_verified, route} ->
                 verified_mount(new_verified, route, params, from, phx_socket, connect_info)
 
@@ -962,7 +962,12 @@ defmodule Phoenix.LiveView.Channel do
 
   defp sync_with_parent(parent, assign_new) do
     _ref = Process.monitor(parent)
-    GenServer.call(parent, {@prefix, :child_mount, self(), assign_new})
+
+    try do
+      GenServer.call(parent, {@prefix, :child_mount, self(), assign_new})
+    catch
+      :exit, {:noproc, _} -> :ok
+    end
   end
 
   defp reply_mount(result, from) do
@@ -1131,24 +1136,28 @@ defmodule Phoenix.LiveView.Channel do
     end
   end
 
-  defp authorize_root_redirect(%Session{} = session, endpoint, %{"url" => url}) do
-    if session.router do
-      case Utils.live_link_info(endpoint, session.router, url) do
-        {:internal, %Route{} = route} ->
-          case Session.authorize_root_redirect(session, route) do
-            {:ok, %Session{} = new_session} -> {:ok, new_session, route}
-            {:error, _reason} = err -> err
-          end
+  defp authorize_session(%Session{} = session, endpoint, url) do
+    cond do
+      Session.live_redirect?(session) ->
+        redir_route = session_route(session, endpoint, url)
 
-        _ ->
-          {:error, :unauthorized}
-      end
-    else
-      {:ok, session, _route = nil}
+        case Session.authorize_root_redirect(session, redir_route) do
+          {:ok, %Session{} = new_session} -> {:ok, new_session, redir_route}
+          {:error, _reason} = err -> err
+        end
+
+      Session.main?(session) ->
+        {:ok, session, session_route(session, endpoint, url)}
+
+      true ->
+        {:ok, session, nil}
     end
   end
 
-  defp authorize_root_redirect(%Session{} = session, _endpoint, %{} = _params) do
-    {:ok, session, _route = nil}
+  defp session_route(%Session{} = session, endpoint, url) do
+    case Utils.live_link_info(endpoint, session.router, url) do
+      {:internal, %Route{} = route} -> route
+      _ -> nil
+    end
   end
 end
