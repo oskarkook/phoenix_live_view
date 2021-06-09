@@ -794,9 +794,9 @@ defmodule Phoenix.LiveView.Channel do
             {:stop, :shutdown, :no_state}
 
           %{} ->
-            case authorize_session(verified, endpoint, params["url"]) do
-              {:ok, %Session{} = new_verified, route} ->
-                verified_mount(new_verified, route, params, from, phx_socket, connect_info)
+            case authorize_session(verified, endpoint, params) do
+              {:ok, %Session{} = new_verified, route, url} ->
+                verified_mount(new_verified, route, url, params, from, phx_socket, connect_info)
 
               {:error, :unauthorized} ->
                 GenServer.reply(from, {:error, %{reason: "unauthorized"}})
@@ -830,7 +830,7 @@ defmodule Phoenix.LiveView.Channel do
     end
   end
 
-  defp verified_mount(%Session{} = verified, route, params, from, phx_socket, connect_info) do
+  defp verified_mount(%Session{} = verified, route, url, params, from, phx_socket, connect_info) do
     %Session{
       id: id,
       view: view,
@@ -854,7 +854,6 @@ defmodule Phoenix.LiveView.Channel do
     } = phx_socket
 
     # Optional parameter handling
-    url = params["url"]
     connect_params = params["params"]
 
     # Optional verified parts
@@ -1136,22 +1135,25 @@ defmodule Phoenix.LiveView.Channel do
     end
   end
 
-  defp authorize_session(%Session{} = session, endpoint, url) do
-    cond do
-      Session.live_redirect?(session) ->
-        redir_route = session_route(session, endpoint, url)
+  defp authorize_session(%Session{} = session, endpoint, %{"redirect" => url}) do
+    redir_route = session_route(session, endpoint, url)
 
-        case Session.authorize_root_redirect(session, redir_route) do
-          {:ok, %Session{} = new_session} -> {:ok, new_session, redir_route}
-          {:error, _reason} = err -> err
-        end
-
-      Session.main?(session) ->
-        {:ok, session, session_route(session, endpoint, url)}
-
-      true ->
-        {:ok, session, nil}
+    case Session.authorize_root_redirect(session, redir_route) do
+      {:ok, %Session{} = new_session} -> {:ok, new_session, redir_route, url}
+      {:error, _reason} = err -> err
     end
+  end
+
+  defp authorize_session(%Session{} = session, endpoint, %{"url" => url}) do
+    if Session.main?(session) do
+      {:ok, session, session_route(session, endpoint, url), url}
+    else
+      {:ok, session, _route = nil, _url = nil}
+    end
+  end
+
+  defp authorize_session(%Session{} = session, _endpoint, %{} = _params) do
+    {:ok, session, _route = nil, _url = nil}
   end
 
   defp session_route(%Session{} = session, endpoint, url) do

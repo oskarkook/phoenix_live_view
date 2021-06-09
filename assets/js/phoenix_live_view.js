@@ -922,7 +922,9 @@ export class LiveSocket {
     let rootsFound = false
     DOM.all(document, `${PHX_VIEW_SELECTOR}:not([${PHX_PARENT_ID}])`, rootEl => {
       if(!this.getRootById(rootEl.id)){
-        let view = this.joinRootView(rootEl, this.getHref())
+        let view = this.newRootView(rootEl)
+        view.setHref(this.getHref())
+        view.join()
         if(rootEl.getAttribute(PHX_MAIN)){ this.main = view }
       }
       rootsFound = true
@@ -938,27 +940,24 @@ export class LiveSocket {
   replaceMain(href, flash, callback = null, linkRef = this.setPendingLink(href)){
     let oldMainEl = this.main.el
     let newMainEl = DOM.cloneNode(oldMainEl)
-    newMainEl.id = `${oldMainEl.id.split(":")[0]}:${this.nextRef()}`
     this.main.showLoader(this.loaderTimeout)
     this.main.destroy()
     oldMainEl.replaceWith(newMainEl)
 
-    this.main = this.joinRootView(newMainEl, href, flash, (newMain, joinCount) => {
-      if(joinCount !== 1){ return }
-      if(!this.commitPendingLink(linkRef)){
-        newMain.destroy()
-        return
+    this.main = this.newRootView(newMainEl, flash)
+    this.main.setRedirect(href)
+    this.main.join(joinCount => {
+      if(joinCount === 1 && this.commitPendingLink(linkRef)){
+        callback && callback()
       }
-      callback && callback()
     })
   }
 
   isPhxView(el){ return el.getAttribute && el.getAttribute(PHX_VIEW) !== null }
 
-  joinRootView(el, href, flash, callback){
-    let view = new View(el, this, null, href, flash)
+  newRootView(el, href, flash){
+    let view = new View(el, this, null, flash)
     this.roots[view.id] = view
-    view.join(callback)
     return view
   }
 
@@ -1990,7 +1989,7 @@ class DOMPatch {
 }
 
 export class View {
-  constructor(el, liveSocket, parentView, href, flash){
+  constructor(el, liveSocket, parentView, flash){
     this.liveSocket = liveSocket
     this.flash = flash
     this.parent = parentView
@@ -2003,7 +2002,8 @@ export class View {
     this.loaderTimer = null
     this.pendingDiffs = []
     this.pruningCIDs = []
-    this.href = href
+    this.redirect = false
+    this.href = null
     this.joinCount = this.parent ? this.parent.joinCount - 1 : 0
     this.joinPending = true
     this.destroyed = false
@@ -2017,7 +2017,8 @@ export class View {
     this.root.children[this.id] = {}
     this.channel = this.liveSocket.channel(`lv:${this.id}`, () => {
       return {
-        url: this.href,
+        redirect: this.redirect ? this.href : undefined,
+        url: this.redirect ? undefined : this.href,
         params: this.connectParams(),
         session: this.getSession(),
         static: this.getStatic(),
@@ -2026,6 +2027,13 @@ export class View {
     })
     this.showLoader(this.liveSocket.loaderTimeout)
     this.bindChannel()
+  }
+
+  setHref(href){ this.href = href }
+
+  setRedirect(href){
+    this.redirect = true
+    this.href = href
   }
 
   isMain(){ return this.liveSocket.main === this }
@@ -2470,7 +2478,7 @@ export class View {
     if(!this.parent){
       this.stopCallback = this.liveSocket.withPageLoading({to: this.href, kind: "initial"})
     }
-    this.joinCallback = () => callback && callback(this, this.joinCount)
+    this.joinCallback = () => callback && callback(this.joinCount)
     this.liveSocket.wrapPush(this, {timeout: false}, () => {
       return this.channel.join()
         .receive("ok", data => !this.isDestroyed() && this.onJoin(data))
